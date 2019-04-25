@@ -80,6 +80,18 @@ inputdf = pd.DataFrame.from_dict(decks,orient='index')
 df = json_normalize(inputdf['result'])
 df['Colors']=df['CourseDeck.colors'].apply(str)
 colorwinrates = df.groupby('Colors')[['ModuleInstanceData.WinLossGate.CurrentWins','ModuleInstanceData.WinLossGate.CurrentLosses']].sum().reset_index()
+colorwinrates.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
+                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
+                 inplace=True)
+
+colorwinrates['WinLoss'] = colorwinrates['Wins']/(colorwinrates['Wins']+colorwinrates['Losses'])
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('1', 'W')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('2', 'U')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('3', 'B')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('4', 'R')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('5', 'G')
+
+colorwinrates.sort_values('WinLoss', ascending=False).to_csv('colorwinrates.tab',sep='\t')
 ##########
 
 df['GoodDeck']=np.where(df['ModuleInstanceData.WinLossGate.CurrentWins']>4.5, 1, .5)
