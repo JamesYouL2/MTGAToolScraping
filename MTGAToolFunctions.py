@@ -9,6 +9,7 @@ import json
 import pandas as pd
 import os
 from pandas.io.json import json_normalize
+import requests
 
 def getdeckids(inputfile, outputfile):  
     abspath = os.path.abspath(__file__)
@@ -57,12 +58,16 @@ def createdf(inputfile):
         df = df.append(df2,ignore_index=True)
         
     df = df.rename(index=str, columns={"quantity_x": "Maindeck", "quantity_y": "sideboard"})
+
     df['quantity'] = df['Maindeck'] + df['sideboard']
 
     return df
 
 def loaddatabase(inputfile='database.json'):
-    data = json.load(open(inputfile))
+    S = requests.Session() 
+    db_rslt = S.get("https://mtgatool.com/database/database.json")
+    db_rslt.raise_for_status()
+    data = db_rslt.json()
     
     l = list(data.values())
     carddata = pd.DataFrame()
@@ -73,3 +78,8 @@ def loaddatabase(inputfile='database.json'):
             carddata = carddata.append(df2,ignore_index=False)
     
     return carddata
+
+    #db_rslt = S.get("https://mtgatool.com/database/database.json")
+    #db_rslt.raise_for_status()
+    #db = db_rslt.json()
+    #events = db['events']

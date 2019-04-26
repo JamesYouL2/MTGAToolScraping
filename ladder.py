@@ -83,15 +83,6 @@ maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
 maindeck['id']=pd.to_numeric(maindeck['id'])
 
-MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'id').fillna(0)
-
-#get wins and losses
-winloss=inputdf[['w','l']]
-winloss['WL']=winloss['w']/(winloss['l']+winloss['w'])
-
-MainDeckCards = MainDeckCards.astype(int)
-feature_list=list(MainDeckCards)
-
 from MTGAToolFunctions import loaddatabase
 
 carddata = loaddatabase()
@@ -101,59 +92,14 @@ MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
 
-from sklearn.preprocessing import StandardScaler
+import hdbscan
+hdb = hdbscan.HDBSCAN(min_cluster_size=5)
+hdb.fit(MainDeckCards[feature_list])
 
-X = StandardScaler().fit_transform(MainDeckCards)
+MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
+MainDeckCards['hdb'].value_counts()
 
-from sklearn.cluster import KMeans
-
-kmeans = KMeans(n_clusters=10)
-kmeans.fit(MainDeckCards[feature_list])
-kmeans.predict(MainDeckCards[feature_list])
-MainDeckCards['kmeans'] = pd.Series(kmeans.predict(MainDeckCards[feature_list]), index=MainDeckCards.index)
-
-for i in range(10):
-    m1 = (MainDeckCards['kmeans'] == i)
-    m2 = (MainDeckCards[m1] != 0).all()
-    print (list(MainDeckCards.loc[m1,m2]))
-
-from sklearn.cluster import MeanShift
-meanshift = MeanShift(bandwidth=2)
-meanshift.fit(MainDeckCards)
-meanshift.predict(MainDeckCards)
-MainDeckCards['meanshift'] = pd.Series(meanshift.predict(MainDeckCards), index=MainDeckCards.index)
-MainDeckCards['meanshift'].value_counts()
-MainDeckCards=MainDeckCards.drop(columns="meanshift")
-
-from sklearn.cluster import AgglomerativeClustering
-aggcluster = AgglomerativeClustering(n_clusters=10)
-aggcluster.fit(MainDeckCards[feature_list])
-
-MainDeckCards['aggcluster'] = pd.Series(aggcluster.labels_, index=MainDeckCards.index)
-MainDeckCards['aggcluster'].value_counts()
-
-for i in range(10):
-    m1 = (MainDeckCards['aggcluster'] == i)
-    m2 = (MainDeckCards[m1] != 0).all()
-    print (list(MainDeckCards.loc[m1,m2]))
-
-from sklearn.mixture import GaussianMixture
-
-gmm = GaussianMixture(n_components=10).fit(MainDeckCards[feature_list])
-MainDeckCards['gmm'] = pd.Series(gmm.predict(MainDeckCards[feature_list]), index=MainDeckCards.index)
-MainDeckCards['gmm'].value_counts()
-
-for i in range(10):
-    m1 = (MainDeckCards['gmm'] == i)
-    m2 = (MainDeckCards[m1] != 0).all()
-    print (list(MainDeckCards.loc[m1,m2]))
-
-from sklearn.cluster import DBSCAN
-dbscan = DBSCAN(eps=13).fit(MainDeckCards[feature_list])
-MainDeckCards['dbscan'] = pd.Series(dbscan.labels_, index=MainDeckCards.index)
-MainDeckCards['dbscan'].value_counts()
-
-for i in range(13):
-    m1 = (MainDeckCards['dbscan'] == i)
-    m2 = (MainDeckCards[m1] != 0).all()
-    print (list(MainDeckCards.loc[m1,m2]))
+for i in range(18):
+    m1 = (MainDeckCards['hdb'] == i)
+    m2 = MainDeckCards[m1].mean()
+    print(m2.nlargest(10))

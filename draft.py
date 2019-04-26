@@ -35,7 +35,7 @@ for ii in range(100):
     # do not use any filters - it's apparently a lighter load for the server that way
     result = S.post(url+"get_explore.php",
                     data={'token': token, 'filter_wcc': "", 'filter_wcu': "",
-                          'filter_sortdir': 1, 'filter_type': 'Descending',
+                          'filter_sortdir': -1, 'filter_type': 'Events',
                           'filter_sort':"By Date", 'filter_skip':str(skip),
                           'filter_owned':"false", 'filter_event':"Sealed_WAR_20190422",
                           "filter_wcr":"", "filter_wcm":"", })
@@ -54,7 +54,7 @@ for ii in range(100):
 
     # download each deck / match result entry
     for entry in data_this['result']:
-        time.sleep(.2) # again, give the server a break
+        time.sleep(.25) # again, give the server a break
         deckid = entry['_id']
 
         course = S.post(url+"get_course.php", data={'token': token, 'courseid':deckid})
@@ -91,10 +91,14 @@ colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('3', 'B')
 colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('4', 'R')
 colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('5', 'G')
 
-colorwinrates.sort_values('WinLoss', ascending=False).to_csv('colorwinrates.tab',sep='\t')
+colorwinrates['Games'] = colorwinrates['Wins']+colorwinrates['Losses']
+colorwinrates['zscore'] = colorwinrates['Games']* (colorwinrates['WinLoss'] - .5) / (.25 * np.sqrt(colorwinrates['Games']))
+
+colorwinrates.sort_values('zscore', ascending=False)
+colorwinrates.sort_values('zscore', ascending=False).to_csv('colorwinrates.tab',sep='\t')
 ##########
 
-df['GoodDeck']=np.where(df['ModuleInstanceData.WinLossGate.CurrentWins']>4.5, 1, .5)
+df['GoodDeck']=np.where(df['ModuleInstanceData.WinLossGate.CurrentWins']>3.5, 1, .5)
 df['GoodDeck']=np.where(df['ModuleInstanceData.WinLossGate.CurrentWins']<1.5, 0, df['GoodDeck'])
 
 from MTGAToolFunctions import loaddatabase
@@ -107,6 +111,21 @@ maindeck.reset_index(inplace=True)
 maindeck['id']=pd.to_numeric(maindeck['id'])
 maindeck=maindeck.merge(carddata)
 
+###########
+#Get Card winrates
+###########
+cardwinrates = maindeck.merge(df,left_on='DeckID', right_index=True)
+cardwinrates.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
+                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
+                 inplace=True)
+cardwinrates = cardwinrates.groupby(['name','cmc','rarity'])[['Wins','Losses']].sum().reset_index()
+
+
+cardwinrates['Games'] = cardwinrates['Wins']+cardwinrates['Losses']
+cardwinrates['WinLoss'] = cardwinrates['Wins']/(cardwinrates['Losses']+cardwinrates['Wins'])
+cardwinrates['zscore'] = cardwinrates['Games']* (cardwinrates['WinLoss'] - .5) / (.25 * np.sqrt(cardwinrates['Games']))
+
+
 #list of all decks and main deck cards
 MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
@@ -117,28 +136,15 @@ modeldf = df.merge(MainDeckCards,left_index=True,right_index=True).reset_index(d
 modeldf = modeldf.loc[(modeldf['GoodDeck']==1) | (modeldf['GoodDeck']==0)]
 modeldf['GoodDeck'] = modeldf['GoodDeck'].apply(int)
 
-X = modeldf[['CourseDeck.colors','playerRank']]
-
-X = X.merge(pd.get_dummies(X['playerRank']), left_index=True, right_index=True)
-X = X.merge(pd.get_dummies(X['CourseDeck.colors'].apply(str)), left_index=True, right_index=True)
-X = X.drop(columns=['CourseDeck.colors','playerRank'])
-
-X_train, X_test, y_train, y_test = train_test_split(modeldf[feature_list], modeldf['GoodDeck'], test_size=0.1)
-
 # Import the model we are using
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble.partial_dependence import partial_dependence, plot_partial_dependence
 from sklearn.ensemble import GradientBoostingRegressor
 
-rf = RandomForestClassifier(n_estimators=500)
+X_train, X_test, y_train, y_test = train_test_split(modeldf[feature_list], modeldf['GoodDeck'], test_size=0.2)
 
-# Train the model on training data
-rf.fit(X_train, y_train)
-
-pd.crosstab(y_test, rf.predict(X_test), rownames=['Actual'], colnames=['Predicted'])
-
-params = {'n_estimators': 500, 'max_depth': 4, 'min_samples_split': 2,
-          'learning_rate': 0.01, 'loss': 'ls'}
+params = {'n_estimators': 500, 'max_depth': 8, 'min_samples_split': 2,
+          'learning_rate': 0.01}
 
 gbr = GradientBoostingRegressor(**params)
 gbr.fit(X_train, y_train)
@@ -147,10 +153,6 @@ pd.crosstab(y_test, gbr.predict(X_test).round(), rownames=['Actual'], colnames=[
 pd.DataFrame({'Variable':X_test.columns,
 'Importance':gbr.feature_importances_}).sort_values('Importance', ascending=False)
 
-fig, axs = plot_partial_dependence(gbr, X=X_test, features=['Parhelion Patrol', 'Rubblebelt Boar', 'Hammer Dropper'],
-                                       feature_names=feature_list,
-                                       n_jobs=1, grid_resolution=10)
-
 allpd = {}
 
 for i in range(len(feature_list)-1):
@@ -158,3 +160,4 @@ for i in range(len(feature_list)-1):
     allpd.update(dict(zip([feature_list[i]], key.tolist())))
 
 df=pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in allpd.items() ]))
+
