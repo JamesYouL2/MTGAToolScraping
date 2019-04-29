@@ -161,18 +161,21 @@ feature_list=list(MainDeckCards)
 #############
 ##carddata
 #############
-maindeck=maindeck.merge(df,left_on='DeckID',right_index=True)
-cardwinrates = maindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['Wins','Losses']].sum().reset_index()
+cardmaindeck=maindeck.merge(df,left_on='DeckID',right_index=True)
 
+cardwinrates = cardmaindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['Wins','Losses']].sum().reset_index()
+cardwinrates = cardwinrates.loc[cardwinrates['rarity']!='land']
 cardwinrates['W/L'] = cardwinrates['Wins']/(cardwinrates['Losses']+cardwinrates['Wins'])
 
 cardwinrates['Games'] = cardwinrates['Wins']+cardwinrates['Losses']
 
 cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='uncommon',cardwinrates['Games'] * (8/3.0), cardwinrates['Games'])
-cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='rare',cardwinrates['Games'] * 6, cardwinrates['AdjustedGames'])
-cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwinrates['Games'] * 12, cardwinrates['AdjustedGames'])
+cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='rare',cardwinrates['Games'] * 8, cardwinrates['AdjustedGames'])
+cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwinrates['Games'] * 16, cardwinrates['AdjustedGames'])
 
 cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames']
+
+cardwinrates.sort_values('WARC', ascending=False).to_csv('cardwinrates.tab',sep='\t')
 
 ####
 #ARCHETYPE ANALYSIS
