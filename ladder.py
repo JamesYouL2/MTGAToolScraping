@@ -4,6 +4,10 @@ import time
 import pandas as pd
 from pandas.io.json import json_normalize
 import json
+import os
+import numpy as np
+
+os.chdir("E:/MTGAToolScraping")
 
 S = requests.Session()
 
@@ -75,6 +79,10 @@ inputdf=pd.read_pickle('ladder.pkl')
 #df['Colors']=df['CourseDeck.colors'].apply(str)
 #colorwinrates = df.groupby('Colors')[['ModuleInstanceData.WinLossGate.CurrentWins','ModuleInstanceData.WinLossGate.CurrentLosses']].sum().reset_index()
 ##########
+inputdf.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
+                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
+                 inplace=True)
+inputdf['rank'].value_counts()
 inputdf=inputdf[inputdf['rank'].isin(['Gold', 'Platinum', 'Diamond', 'Mythic'])]
 
 maindeck=inputdf['mainDeck'].apply(json_normalize)
@@ -88,6 +96,10 @@ from MTGAToolFunctions import loaddatabase
 carddata = loaddatabase()
 maindeck=maindeck.merge(carddata)
 
+array = maindeck[maindeck['set'] == 'War of the Spark']['DeckID'].unique()
+
+maindeck=maindeck.loc[maindeck['DeckID'].isin(array)]
+
 MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
@@ -99,7 +111,16 @@ hdb.fit(MainDeckCards[feature_list])
 MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
 MainDeckCards['hdb'].value_counts()
 
-for i in range(18):
+for i in range(25):
     m1 = (MainDeckCards['hdb'] == i)
     m2 = MainDeckCards[m1].mean()
-    print(m2.nlargest(10))
+    #print(m2['Jace, Wielder of Mysteries'],i)
+    print(m2.nlargest(25),i)
+
+MergeMainDeckCards=MainDeckCards.merge(inputdf,right_index=True,left_on='DeckID')
+
+MetaList=MergeMainDeckCards.groupby('hdb')['w','l'].sum()
+
+MetaList['WL']=(MetaList['w'])/(MetaList['w']+MetaList['l'])
+MetaList['ZScore']=(MetaList['w']-MetaList['l'])/np.sqrt(MetaList['w']+MetaList['l'])
+MetaList.sort_values('ZScore',ascending=False)
