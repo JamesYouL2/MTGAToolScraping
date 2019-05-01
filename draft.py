@@ -9,6 +9,8 @@ import pprint
 
 from sklearn.model_selection import train_test_split
 from MTGAToolFunctions import loaddatabase
+from MTGAToolFunctions import RankTranslate
+
 
 S = requests.Session()
 
@@ -20,7 +22,7 @@ events = db['events']
 
 url ='https://mtgatool.com/api/'
 rslt = S.post(url+"login.php", data={'email':'lastchancexi@yahoo.com', 'password':
-                                     hashlib.sha1('unreal12'.encode()).hexdigest(),
+                                     '958f83adfb8f6d64fd7f24702f98f8441393d054',
                                      'playername':'', 'playerid':'',
                                      'mtgaversion':'', 'playerid':'',
                                      'version':'', 'reqId':'ABCDEF',
@@ -45,7 +47,7 @@ for ii in range(100):
                     data={'token': token, 'filter_wcc': "", 'filter_wcu': "",
                           'filter_sortdir': -1, 'filter_type': 'Events',
                           'filter_sort':"By Date", 'filter_skip':str(skip),
-                          'filter_owned':"false", 'filter_event':"CompDraft_RNA_20190117",
+                          'filter_owned':"false", 'filter_event':"CompDraft_WAR_20190425",
                           "filter_wcr":"", "filter_wcm":"", })
 
     data_this = result.json()
@@ -75,7 +77,31 @@ for ii in range(100):
 
 #have to start by converting to pandas df
 inputdf = pd.DataFrame.from_dict(decks,orient='index')
+
 df = json_normalize(inputdf['result'])
+
+df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
+                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
+                 inplace=True)
+df['Games'] = df['Wins']+df['Losses']
+
+df.groupby('playerRank')['Wins','Losses'].mean()
+
+df['IntRank']=df.apply(RankTranslate, axis='columns')
+
+array=df.groupby('playerRank')['player'].unique()
+
+
+#################
+#GET PLAYER DATA RANK
+#################
+player = df.groupby('player')['Wins','Losses', 'Games'].sum()
+player['rank']=0
+player['rank'].update(df.groupby('player')['IntRank'].max())
+
+player[player['rank']==1].describe()
+player[player['rank']==2].describe()
+player[player['rank']==3].describe()
 
 #########
 #SPLITTING DATA BY RANK
@@ -84,6 +110,7 @@ df = json_normalize(inputdf['result'])
 #df=pd.read_pickle('RNATraDraft.pkl')
 carddata = loaddatabase()
 
+df.groupby('player').sum().describe()
 
 print(df['playerRank'].value_counts())
 

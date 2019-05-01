@@ -28,7 +28,7 @@ data_ids = set()
 decks = {}
 
 # 100 is the number of sets of 25 decklists to retrieve
-for ii in range(50):
+for ii in range(20):
     time.sleep(.2) # give the server a break, sleep between queries
 
     skip = ii * 25
@@ -105,7 +105,7 @@ MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
 
 import hdbscan
-hdb = hdbscan.HDBSCAN(min_cluster_size=5)
+hdb = hdbscan.HDBSCAN(min_cluster_size=4)
 hdb.fit(MainDeckCards[feature_list])
 
 MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)

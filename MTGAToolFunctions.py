@@ -83,3 +83,19 @@ def loaddatabase(inputfile='database.json'):
     #db_rslt.raise_for_status()
     #db = db_rslt.json()
     #events = db['events']
+
+def RankTranslate(row):
+    if row['playerRank'] == 'Mythic':
+        return 6
+    elif row['playerRank'] == 'Diamond':
+        return 5 
+    elif row['playerRank'] == 'Platinum':
+        return 4 
+    elif row['playerRank'] == 'Gold':
+        return 3
+    elif row['playerRank'] == 'Silver':
+        return 2
+    elif row['playerRank'] == 'Bronze':
+        return 1
+    else:
+        return 0
