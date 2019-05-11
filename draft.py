@@ -10,15 +10,11 @@ import pprint
 from sklearn.model_selection import train_test_split
 from MTGAToolFunctions import loaddatabase
 from MTGAToolFunctions import RankTranslate
+from MTGAToolFunctions import GetEvents
 
+GetEvents()
 
 S = requests.Session()
-
-db_rslt = S.get("https://mtgatool.com/database/database.json")
-db_rslt.raise_for_status()
-db = db_rslt.json()
-events = db['events']
-
 
 url ='https://mtgatool.com/api/'
 rslt = S.post(url+"login.php", data={'email':'lastchancexi@yahoo.com', 'password':
@@ -35,10 +31,11 @@ data = []
 data_ids = set()
 
 decks = {}
+carddata = loaddatabase()
 
 # 100 is the number of sets of 25 decklists to retrieve
-for ii in range(100):
-    time.sleep(1) # give the server a break, sleep between queries
+for ii in range(200):
+    time.sleep(.5) # give the server a break, sleep between queries
 
     skip = ii * 25
 
@@ -47,7 +44,7 @@ for ii in range(100):
                     data={'token': token, 'filter_wcc': "", 'filter_wcu': "",
                           'filter_sortdir': -1, 'filter_type': 'Events',
                           'filter_sort':"By Date", 'filter_skip':str(skip),
-                          'filter_owned':"false", 'filter_event':"CompDraft_WAR_20190425",
+                          'filter_owned':"false", 'filter_event':"QuickDraft_WAR_20190510",
                           "filter_wcr":"", "filter_wcm":"", })
 
     data_this = result.json()
@@ -64,7 +61,7 @@ for ii in range(100):
 
     # download each deck / match result entry
     for entry in data_this['result']:
-        time.sleep(.5) # again, give the server a break
+        time.sleep(.25) # again, give the server a break
         deckid = entry['_id']
 
         course = S.post(url+"get_course.php", data={'token': token, 'courseid':deckid})
@@ -85,30 +82,12 @@ df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
                  inplace=True)
 df['Games'] = df['Wins']+df['Losses']
 
-df.groupby('playerRank')['Wins','Losses'].mean()
-
-df['IntRank']=df.apply(RankTranslate, axis='columns')
-
-array=df.groupby('playerRank')['player'].unique()
-
-
-#################
-#GET PLAYER DATA RANK
-#################
-player = df.groupby('player')['Wins','Losses', 'Games'].sum()
-player['rank']=0
-player['rank'].update(df.groupby('player')['IntRank'].max())
-
-player[player['rank']==1].describe()
-player[player['rank']==2].describe()
-player[player['rank']==3].describe()
 
 #########
 #SPLITTING DATA BY RANK
 
-#df.to_pickle('RNATraDraft.pkl')
-#df=pd.read_pickle('RNATraDraft.pkl')
-carddata = loaddatabase()
+#df.to_pickle('RNAQuickDraft.pkl')
+#df=pd.read_pickle('RNAQuickDraft.pkl')
 
 df.groupby('player').sum().describe()
 
@@ -123,56 +102,10 @@ df['Games'] = df['Wins']+df['Losses']
 bronzedf = df[df['playerRank']=='Bronze']
 df = df[df['playerRank']!='Bronze']
 golddf = df[df['playerRank']!='Silver']
-##########
-maindeck=golddf['CourseDeck.mainDeck'].apply(json_normalize)
-maindeck=pd.concat(maindeck.to_dict(),axis=0)
-maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
-maindeck.reset_index(inplace=True)  
-maindeck['id']=pd.to_numeric(maindeck['id'])
-maindeck=maindeck.merge(carddata)
 
-goodpct=(maindeck.groupby('name')['quantity'].sum()/maindeck['quantity'].sum())
-goodpct=goodpct.rename('good')
+golddf['Wins'].sum()/golddf['Games'].sum()
 
-maindeck=bronzedf['CourseDeck.mainDeck'].apply(json_normalize)
-maindeck=pd.concat(maindeck.to_dict(),axis=0)
-maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
-maindeck.reset_index(inplace=True)  
-maindeck['id']=pd.to_numeric(maindeck['id'])
-maindeck=maindeck.merge(carddata)
-badpct=(maindeck.groupby('name')['quantity'].sum()/maindeck['quantity'].sum())
-badpct=badpct.rename('bad')
-
-playrate=pd.concat([goodpct,badpct],axis=1)
-
-playrate['goodminusbad']=playrate['good']-playrate['bad']
-
-#########################
-##Color Winrates
-golddf['Colors']=golddf['CourseDeck.colors'].apply(str)
-colorwinrates = golddf.groupby('Colors')[['Wins','Losses']].sum().reset_index()
-
-colorwinrates['WinLoss'] = colorwinrates['Wins']/(colorwinrates['Wins']+colorwinrates['Losses'])
-colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('1', 'W')
-colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('2', 'U')
-colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('3', 'B')
-colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('4', 'R')
-colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('5', 'G')
-
-colorwinrates['Games'] = colorwinrates['Wins']+colorwinrates['Losses']
-colorwinrates['zscore'] = colorwinrates['Games']* (colorwinrates['WinLoss'] - .5) / (.5 * np.sqrt(colorwinrates['Games']))
-
-colorwinrates.sort_values('zscore', ascending=False)
-colorwinrates.sort_values('zscore', ascending=False).to_csv('colorwinrates.tab',sep='\t')
-##########
-df['ModuleInstanceData.WinLossGate.CurrentWins'].value_counts()
-
-df['GoodDeck']=np.where(df['Wins']>2.5, 1, .5)
-df['GoodDeck']=np.where(df['Wins']<1.5, 0, df['GoodDeck'])
-
-from MTGAToolFunctions import loaddatabase
-carddata = loaddatabase()
-
+##############
 maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
 maindeck=pd.concat(maindeck.to_dict(),axis=0)
 maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
@@ -202,6 +135,7 @@ cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwi
 
 cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames']
 
+cardwinrates.loc[cardwinrates['rarity']=='common'].sort_values('WARC', ascending=False).head(10)
 cardwinrates.sort_values('WARC', ascending=False).to_csv('cardwinrates.tab',sep='\t')
 
 ####

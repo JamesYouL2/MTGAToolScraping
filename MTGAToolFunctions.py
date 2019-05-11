@@ -99,3 +99,10 @@ def RankTranslate(row):
         return 1
     else:
         return 0
+
+def GetEvents():
+    S = requests.Session()
+    db_rslt = S.get("https://mtgatool.com/database/database.json")
+    db_rslt.raise_for_status()
+    db = db_rslt.json()
+    print(db['events'])

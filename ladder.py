@@ -6,8 +6,9 @@ from pandas.io.json import json_normalize
 import json
 import os
 import numpy as np
+import hdbscan
 
-os.chdir("E:/MTGAToolScraping")
+os.chdir("C:/MTGAToolScraping")
 
 S = requests.Session()
 
@@ -104,8 +105,7 @@ MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
 
-import hdbscan
-hdb = hdbscan.HDBSCAN(min_cluster_size=4)
+hdb = hdbscan.HDBSCAN(min_cluster_size=3)
 hdb.fit(MainDeckCards[feature_list])
 
 MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
