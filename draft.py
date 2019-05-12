@@ -75,6 +75,8 @@ for ii in range(200):
 #have to start by converting to pandas df
 inputdf = pd.DataFrame.from_dict(decks,orient='index')
 
+print(df['playerRank'].value_counts())
+
 df = json_normalize(inputdf['result'])
 
 df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
@@ -82,28 +84,22 @@ df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
                  inplace=True)
 df['Games'] = df['Wins']+df['Losses']
 
-
 #########
 #SPLITTING DATA BY RANK
 
 #df.to_pickle('RNAQuickDraft.pkl')
 #df=pd.read_pickle('RNAQuickDraft.pkl')
 
-df.groupby('player').sum().describe()
-
-print(df['playerRank'].value_counts())
-
-df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
-                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
-                 inplace=True)
-
-df['Games'] = df['Wins']+df['Losses']
-
 bronzedf = df[df['playerRank']=='Bronze']
 df = df[df['playerRank']!='Bronze']
 golddf = df[df['playerRank']!='Silver']
 
-golddf['Wins'].sum()/golddf['Games'].sum()
+df['Wins'].sum()/df['Games'].sum()
+
+#Color winrates
+df['Colors']=df['CourseDeck.colors'].apply(str)
+colorwinrates = df.groupby('Colors')[['Wins','Losses','Games']].sum().reset_index()
+colorwinrates['ZScore']=(colorwinrates['Wins']-colorwinrates['Losses'])/np.sqrt(colorwinrates['Games'])
 
 ##############
 maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
@@ -136,7 +132,7 @@ cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwi
 cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames']
 
 cardwinrates.loc[cardwinrates['rarity']=='common'].sort_values('WARC', ascending=False).head(10)
-cardwinrates.sort_values('WARC', ascending=False).to_csv('cardwinrates.tab',sep='\t')
+cardwinrates.sort_values('WARC', ascending=False).to_csv('RNAcardwinrates.tab',sep='\t')
 
 ####
 #ARCHETYPE ANALYSIS
