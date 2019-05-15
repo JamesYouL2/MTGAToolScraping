@@ -94,12 +94,21 @@ bronzedf = df[df['playerRank']=='Bronze']
 df = df[df['playerRank']!='Bronze']
 golddf = df[df['playerRank']!='Silver']
 
-df['Wins'].sum()/df['Games'].sum()
+average=df['Wins'].sum()/df['Games'].sum()
 
 #Color winrates
 df['Colors']=df['CourseDeck.colors'].apply(str)
 colorwinrates = df.groupby('Colors')[['Wins','Losses','Games']].sum().reset_index()
-colorwinrates['ZScore']=(colorwinrates['Wins']-colorwinrates['Losses'])/np.sqrt(colorwinrates['Games'])
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('1', 'W')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('2', 'U')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('3', 'B')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('4', 'R')
+colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('5', 'G')
+colorwinrates['WinLoss'] = colorwinrates['Wins']/colorwinrates['Games']
+
+colorwinrates['ZScore'] = 2 * np.sqrt(colorwinrates['Games']) * (colorwinrates['WinLoss'] - average) 
+
+colorwinrates.sort_values('ZScore', ascending=False)
 
 ##############
 maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
@@ -120,7 +129,6 @@ feature_list=list(MainDeckCards)
 cardmaindeck=maindeck.merge(df,left_on='DeckID',right_index=True)
 
 cardwinrates = cardmaindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['Wins','Losses']].sum().reset_index()
-cardwinrates = cardwinrates.loc[cardwinrates['rarity']!='land']
 cardwinrates['W/L'] = cardwinrates['Wins']/(cardwinrates['Losses']+cardwinrates['Wins'])
 
 cardwinrates['Games'] = cardwinrates['Wins']+cardwinrates['Losses']
@@ -132,7 +140,7 @@ cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwi
 cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames']
 
 cardwinrates.loc[cardwinrates['rarity']=='common'].sort_values('WARC', ascending=False).head(10)
-cardwinrates.sort_values('WARC', ascending=False).to_csv('RNAcardwinrates.tab',sep='\t')
+cardwinrates.sort_values('WARC', ascending=False).to_csv('WARcardwinrates.tab',sep='\t')
 
 ####
 #ARCHETYPE ANALYSIS
