@@ -27,15 +27,16 @@ rslt = S.post(url+"login.php", data={'email':'lastchancexi@yahoo.com', 'password
 
 token = rslt.json()['token']
 
+carddata = loaddatabase()
+
 data = []
 data_ids = set()
 
 decks = {}
-carddata = loaddatabase()
 
 # 100 is the number of sets of 25 decklists to retrieve
-for ii in range(200):
-    time.sleep(.5) # give the server a break, sleep between queries
+for ii in range(500):
+    time.sleep(.25) # give the server a break, sleep between queries
 
     skip = ii * 25
 
@@ -75,30 +76,30 @@ for ii in range(200):
 #have to start by converting to pandas df
 inputdf = pd.DataFrame.from_dict(decks,orient='index')
 
-print(df['playerRank'].value_counts())
-
 df = json_normalize(inputdf['result'])
+
+print(df['playerRank'].value_counts())
 
 df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
                           'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
                  inplace=True)
 df['Games'] = df['Wins']+df['Losses']
+df['Colors']=df['CourseDeck.colors'].apply(str)
 
 #########
 #SPLITTING DATA BY RANK
 
-#df.to_pickle('RNAQuickDraft.pkl')
+#df.to_pickle('WARQuickDraft.pkl')
 #df=pd.read_pickle('RNAQuickDraft.pkl')
 
 bronzedf = df[df['playerRank']=='Bronze']
 df = df[df['playerRank']!='Bronze']
 golddf = df[df['playerRank']!='Silver']
 
-average=df['Wins'].sum()/df['Games'].sum()
+average=golddf['Wins'].sum()/golddf['Games'].sum()
 
 #Color winrates
-df['Colors']=df['CourseDeck.colors'].apply(str)
-colorwinrates = df.groupby('Colors')[['Wins','Losses','Games']].sum().reset_index()
+colorwinrates = golddf.groupby('Colors')[['Wins','Losses','Games']].sum().reset_index()
 colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('1', 'W')
 colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('2', 'U')
 colorwinrates['Colors'] = colorwinrates['Colors'].str.replace('3', 'B')
@@ -109,9 +110,11 @@ colorwinrates['WinLoss'] = colorwinrates['Wins']/colorwinrates['Games']
 colorwinrates['ZScore'] = 2 * np.sqrt(colorwinrates['Games']) * (colorwinrates['WinLoss'] - average) 
 
 colorwinrates.sort_values('ZScore', ascending=False)
+colorwinrates.sort_values('ZScore', ascending=False).to_csv('WARcolorwinrates.tab',sep='\t')
+
 
 ##############
-maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
+maindeck=golddf['CourseDeck.mainDeck'].apply(json_normalize)
 maindeck=pd.concat(maindeck.to_dict(),axis=0)
 maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
@@ -126,7 +129,7 @@ feature_list=list(MainDeckCards)
 #############
 ##carddata
 #############
-cardmaindeck=maindeck.merge(df,left_on='DeckID',right_index=True)
+cardmaindeck=maindeck.merge(golddf,left_on='DeckID',right_index=True)
 
 cardwinrates = cardmaindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['Wins','Losses']].sum().reset_index()
 cardwinrates['W/L'] = cardwinrates['Wins']/(cardwinrates['Losses']+cardwinrates['Wins'])
@@ -141,80 +144,4 @@ cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames'
 
 cardwinrates.loc[cardwinrates['rarity']=='common'].sort_values('WARC', ascending=False).head(10)
 cardwinrates.sort_values('WARC', ascending=False).to_csv('WARcardwinrates.tab',sep='\t')
-
-####
-#ARCHETYPE ANALYSIS
-####
-import hdbscan
-hdb = hdbscan.HDBSCAN(min_cluster_size=25)
-hdb.fit(MainDeckCards[feature_list])
-
-MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
-MainDeckCards['hdb'].value_counts()
-
-mergedf=MainDeckCards.join(df)
-mergedf['Colors']=mergedf['CourseDeck.colors'].apply(str)
-
-hdbcolors=mergedf[['Wins','Losses','Games','hdb','Colors']].groupby(['hdb','Colors']).agg('sum')
-hdbvalues=hdbcolors.groupby('hdb').agg('sum')
-hdbvalues['zscore']=(hdbvalues['Wins']-hdbvalues['Losses'])/np.sqrt(hdbvalues['Games'])
-
-for i in range(6):
-    m1 = (MainDeckCards['hdb'] == i)
-    m2 = MainDeckCards[m1].mean()
-    print(m2.nlargest(10), i)
-
-############
-#Modeling
-############
-modeldf = df.merge(MainDeckCards,left_index=True,right_index=True).reset_index(drop=True)
-#X = StandardScaler().fit_transform(modeldf[feature_list])
-
-# Import the model we are using
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble.partial_dependence import partial_dependence, plot_partial_dependence
-from sklearn.ensemble import GradientBoostingRegressor
-from sklearn.grid_search import GridSearchCV   #Perforing grid search
-from sklearn.grid_search import RandomizedSearchCV   #Perforing grid search
-from sklearn.ensemble import RandomForestClassifier
-
-X_train, X_test, y_train, y_test = train_test_split(modeldf[feature_list], modeldf['Wins'], test_size=0.2)
-
-parameters = {
-    "learning_rate": [0.001, 0.01, 0.025],
-    "min_samples_split": [2, 3, 4],
-    "min_samples_leaf": [2, 3, 4],
-    "max_depth":[3,5,8],
-    "max_features":["log2",None],
-    "criterion": ["friedman_mse"],
-    "subsample":[0.8],
-    "n_estimators":[500]
-    }
-
-rf = RandomForestClassifier(n_estimators=500)
-
-# Train the model on training data
-rf.fit(X_train, y_train)
-
-pd.crosstab(y_test, rf.predict(X_test), rownames=['Actual'], colnames=['Predicted'])
-
-clf = GridSearchCV(GradientBoostingRegressor(), parameters, cv=3, n_jobs=-1)
-clf.fit(X_train, y_train)
-print(clf.score(X_train, y_train))
-print(clf.best_params_)
-
-gbr = GradientBoostingRegressor(**clf.best_params_)
-gbr.fit(X_train, y_train)
-pd.crosstab(y_test, gbr.predict(X_test).round(), rownames=['Actual'], colnames=['Predicted'])
-
-pd.DataFrame({'Variable':X_test.columns,
-'Importance':gbr.feature_importances_}).sort_values('Importance', ascending=False)
-
-allpd = {}
-
-for i in range(len(feature_list)-1):
-    key, values = partial_dependence(gbr, target_variables=i, X=X_test) 
-    allpd.update(dict(zip([feature_list[i]], key.tolist())))
-
-df=pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in allpd.items() ]))
 

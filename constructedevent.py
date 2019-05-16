@@ -7,11 +7,15 @@ import json
 import numpy as np
 
 from sklearn.model_selection import train_test_split
+from MTGAToolFunctions import loaddatabase
+from MTGAToolFunctions import RankTranslate
+from MTGAToolFunctions import GetEvents
 
-db_rslt = S.get("https://mtgatool.com/database/database.json")
-db_rslt.raise_for_status()
-db = db_rslt.json()
-events = db['events']
+
+
+GetEvents()
+
+carddata = loaddatabase()
 
 S = requests.Session()
 
@@ -33,7 +37,7 @@ decks = {}
 
 # 100 is the number of sets of 25 decklists to retrieve
 for ii in range(100):
-    time.sleep(1) # give the server a break, sleep between queries
+    time.sleep(.25) # give the server a break, sleep between queries
 
     skip = ii * 25
 
@@ -59,7 +63,7 @@ for ii in range(100):
 
     # download each deck / match result entry
     for entry in data_this['result']:
-        if entry['date']<'2019-04-24':
+        if entry['date']<'2019-05-01':
             break
         time.sleep(.25) # again, give the server a break
         deckid = entry['_id']
@@ -86,9 +90,6 @@ inputdf = pd.DataFrame.from_dict(decks,orient='index')
 #Color winrates
 df = json_normalize(inputdf['result'])
 
-from MTGAToolFunctions import loaddatabase
-carddata = loaddatabase()
-
 #########
 #MainDecks
 #########
@@ -98,8 +99,6 @@ maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
 maindeck['id']=pd.to_numeric(maindeck['id'])
 maindeck=maindeck.merge(carddata)
-
-maindeck[maindeck['set'] == 'War of the Spark']['DeckID'].nunique()
 
 #list of all decks and main deck cards
 MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
