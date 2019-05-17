@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from MTGAToolFunctions import loaddatabase
 from MTGAToolFunctions import RankTranslate
 from MTGAToolFunctions import GetEvents
-
+import hdbscan
 
 
 GetEvents()
@@ -36,7 +36,7 @@ data_ids = set()
 decks = {}
 
 # 100 is the number of sets of 25 decklists to retrieve
-for ii in range(100):
+for ii in range(500):
     time.sleep(.25) # give the server a break, sleep between queries
 
     skip = ii * 25
@@ -90,6 +90,16 @@ inputdf = pd.DataFrame.from_dict(decks,orient='index')
 #Color winrates
 df = json_normalize(inputdf['result'])
 
+df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
+                          'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
+                 inplace=True)
+
+df['playerRank'].value_counts()
+
+bronzedf = df[df['playerRank']=='Bronze']
+df = df[df['playerRank']!='Bronze']
+golddf = df[df['playerRank']!='Silver']
+
 #########
 #MainDecks
 #########
@@ -105,33 +115,24 @@ MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
 
-modeldf = df.merge(MainDeckCards,left_index=True,right_index=True).reset_index(drop=True)
-#X = StandardScaler().fit_transform(modeldf[feature_list])
-modeldf = modeldf.loc[(modeldf['GoodDeck']==1) | (modeldf['GoodDeck']==0)]
-modeldf['GoodDeck'] = modeldf['GoodDeck'].apply(int)
+import hdbscan
 
-# Import the model we are using
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble.partial_dependence import partial_dependence, plot_partial_dependence
-from sklearn.ensemble import GradientBoostingRegressor
+hdb = hdbscan.HDBSCAN(min_cluster_size=20)
+hdb.fit(MainDeckCards[feature_list])
 
-X_train, X_test, y_train, y_test = train_test_split(modeldf[feature_list], modeldf['GoodDeck'], test_size=0.2)
+MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
+MainDeckCards['hdb'].value_counts()
 
-params = {'n_estimators': 500, 'max_depth': 8, 'min_samples_split': 2,
-          'learning_rate': 0.01}
+for i in range(30):
+    m1 = (MainDeckCards['hdb'] == i)
+    m2 = MainDeckCards[m1].mean()
+    print(m2.nlargest(30),i)
 
-gbr = GradientBoostingRegressor(**params)
-gbr.fit(X_train, y_train)
-pd.crosstab(y_test, gbr.predict(X_test).round(), rownames=['Actual'], colnames=['Predicted'])
+MergeMainDeckCards=MainDeckCards.merge(df,right_index=True,left_on='DeckID')
 
-pd.DataFrame({'Variable':X_test.columns,
-'Importance':gbr.feature_importances_}).sort_values('Importance', ascending=False)
+MetaList=MergeMainDeckCards.groupby('hdb')['Wins','Losses'].sum()
 
-allpd = {}
-
-for i in range(len(feature_list)-1):
-    key, values = partial_dependence(gbr, target_variables=i, X=X_test) 
-    allpd.update(dict(zip([feature_list[i]], key.tolist())))
-
-df=pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in allpd.items() ]))
+MetaList['WinLoss']=(MetaList['Wins'])/(MetaList['Wins']+MetaList['Losses'])
+MetaList['ZScore'] = 2 * np.sqrt(MetaList['Wins'] + MetaList['Losses']) * (MetaList['WinLoss'] - MetaList['WinLoss'].mean())
+MetaList.sort_values('ZScore',ascending=False)
 
