@@ -35,7 +35,7 @@ data_ids = set()
 decks = {}
 
 # 100 is the number of sets of 25 decklists to retrieve
-for ii in range(500):
+for ii in range(1000):
     time.sleep(.25) # give the server a break, sleep between queries
 
     skip = ii * 25
@@ -62,6 +62,8 @@ for ii in range(500):
 
     # download each deck / match result entry
     for entry in data_this['result']:
+        #if entry['date']<'2019-05-01':
+            #break
         time.sleep(.25) # again, give the server a break
         deckid = entry['_id']
 

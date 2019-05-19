@@ -35,6 +35,10 @@ data_ids = set()
 
 decks = {}
 
+if os.path.exists('matchdata.json'):
+    with open('matchdata.json', 'r') as fh:
+        matchdata = json.load(fh)
+
 # 100 is the number of sets of 25 decklists to retrieve
 for ii in range(100):
     time.sleep(.25) # give the server a break, sleep between queries
@@ -75,6 +79,8 @@ for ii in range(100):
         decks[deckid] = course.json()
 
         print(".", end="", flush=True)
+
+
 
 #have to start by converting to pandas df
 inputdf = pd.DataFrame.from_dict(decks,orient='index')
