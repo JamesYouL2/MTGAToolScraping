@@ -64,9 +64,9 @@ for ii in iterlist:
                     #'filter_sort': "By Wins",
                     'filter_skip': str(skip),
                     'filter_owned': "false",
-                    #'filter_type': "Ranked Constructed",
+                    #'filter_type': "Ranked Constructed", 
                     'filter_type': "Events",
-                    'filter_event': "",
+                    'filter_event': "QuickDraft_WAR_20190510",
                 }
 
         try: 

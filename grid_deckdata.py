@@ -35,6 +35,8 @@ def grid_deckdata(decks, event=None):
                                                 for card in deck['CourseDeck']['mainDeck']])
         deck_grid[key]['maindeckct'] = sum(card['quantity'] for card in deck['CourseDeck']['mainDeck'])
 
+        deck_grid[key]['JSONmaindeck'] = deck['CourseDeck']['mainDeck']
+
         if 'playerRank' in deck:
             deck_grid[key]['playerRank'] = deck['playerRank']
         else:
@@ -70,7 +72,7 @@ def grid_deckdata(decks, event=None):
         else:
             deck_grid[key]['matchids'] = ''
 
-        pb.update()
+        #pb.update()
 
     df = pandas.DataFrame.from_dict(deck_grid).T
 

@@ -10,80 +10,8 @@ from sklearn.model_selection import train_test_split
 from MTGAToolFunctions import loaddatabase
 from MTGAToolFunctions import RankTranslate
 from MTGAToolFunctions import GetEvents
-
-
-
-GetEvents()
-
-carddata = loaddatabase()
-
-S = requests.Session()
-
-url ='https://mtgatool.com/api/'
-rslt = S.post(url+"login.php", data={'email':'lastchancexi@yahoo.com', 'password':
-                                     hashlib.sha1('unreal12'.encode()).hexdigest(),
-                                     'playername':'', 'playerid':'',
-                                     'mtgaversion':'', 'playerid':'',
-                                     'version':'', 'reqId':'ABCDEF',
-                                     'method':'auth',
-                                     'method_path':'/api/login.php'})
-
-token = rslt.json()['token']
-
-data = []
-data_ids = set()
-
-decks = {}
-
-if os.path.exists('matchdata.json'):
-    with open('matchdata.json', 'r') as fh:
-        matchdata = json.load(fh)
-
-# 100 is the number of sets of 25 decklists to retrieve
-for ii in range(100):
-    time.sleep(.25) # give the server a break, sleep between queries
-
-    skip = ii * 25
-
-    # do not use any filters - it's apparently a lighter load for the server that way
-    result = S.post(url+"get_explore.php",
-                    data={'token': token, 'filter_wcc': "", 'filter_wcu': "",
-                          'filter_sortdir': -1, 'filter_type': 'Events',
-                          'filter_sort':"By Date", 'filter_skip':str(skip),
-                          'filter_owned':"false", 'filter_event':"Constructed_Event",
-                          "filter_wcr":"", "filter_wcm":"", })
-
-    data_this = result.json()
-
-    unique_ids = set([x['_id'] for x in data_this['result']])
-
-    n_unique = len(unique_ids - data_ids)
-
-    data += data_this['result']
-
-    data_ids = data_ids | unique_ids
-
-    print(f"Added {n_unique} new ids of {len(unique_ids)} retrieved, total {len(data)}")
-
-    # download each deck / match result entry
-    for entry in data_this['result']:
-        if entry['date']<'2019-05-01':
-            break
-        time.sleep(.25) # again, give the server a break
-        deckid = entry['_id']
-
-        course = S.post(url+"get_course.php", data={'token': token, 'courseid':deckid})
-        course.raise_for_status()
-        assert course.json()['ok']
-
-        decks[deckid] = course.json()
-
-        print(".", end="", flush=True)
-
-
-
-#have to start by converting to pandas df
-inputdf = pd.DataFrame.from_dict(decks,orient='index')
+import grid_deckdata
+import os
 
 #save pandas df
 #inputdf.to_pickle('WARLadder.pkl')
@@ -92,14 +20,36 @@ inputdf = pd.DataFrame.from_dict(decks,orient='index')
 #Load pandas df
 #inputdf=pd.read_pickle('GRNdraft.pkl')
 
+carddata=loaddatabase()
+
+print("Loading existing deck data ...")
+if os.path.exists('deckdata.jsonlist'):
+    with open('deckdata.jsonlist', 'r') as fh:
+        decks = [json.loads(line) for line in fh.readlines()]
+        deckdict = {row['result']['_id']: row for row in decks}
+
+deckgrid = grid_deckdata.grid_deckdata(deckdict)
+df = deckgrid.loc[deckgrid['event']=='QuickDraft_WAR_20190510']
+df = df.loc[~df['playerRank'].isin(['Silver','Bronze'])]
+
+print(datetime.fromtimestamp(int(df['date'].min())).strftime('%Y-%m-%d'))
+
 #########
 #Color winrates
-df = json_normalize(inputdf['result'])
+#########
+average=df['wins'].sum()/df['games'].sum()
+colorwinrates = df.groupby('colors')[['wins','losses','games']].sum().reset_index()
+colorwinrates['WinLoss'] = colorwinrates['wins']/colorwinrates['games']
+
+colorwinrates['ZScore'] = 2 * np.sqrt(colorwinrates['games']) * (colorwinrates['WinLoss'] - average) 
+
+colorwinrates.sort_values('ZScore', ascending=False)
+colorwinrates.sort_values('ZScore', ascending=False).to_csv('WARcolorwinrates.tab',sep='\t')
 
 #########
 #MainDecks
 #########
-maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
+maindeck=df['JSONmaindeck'].apply(json_normalize)
 maindeck=pd.concat(maindeck.to_dict(),axis=0)
 maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
@@ -116,28 +66,24 @@ modeldf = df.merge(MainDeckCards,left_index=True,right_index=True).reset_index(d
 modeldf = modeldf.loc[(modeldf['GoodDeck']==1) | (modeldf['GoodDeck']==0)]
 modeldf['GoodDeck'] = modeldf['GoodDeck'].apply(int)
 
-# Import the model we are using
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble.partial_dependence import partial_dependence, plot_partial_dependence
-from sklearn.ensemble import GradientBoostingRegressor
+import hdbscan
 
-X_train, X_test, y_train, y_test = train_test_split(modeldf[feature_list], modeldf['GoodDeck'], test_size=0.2)
+hdb = hdbscan.HDBSCAN(min_cluster_size=25)
+hdb.fit(MainDeckCards[feature_list])
 
-params = {'n_estimators': 500, 'max_depth': 8, 'min_samples_split': 2,
-          'learning_rate': 0.01}
+MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
+MainDeckCards['hdb'].value_counts()
 
-gbr = GradientBoostingRegressor(**params)
-gbr.fit(X_train, y_train)
-pd.crosstab(y_test, gbr.predict(X_test).round(), rownames=['Actual'], colnames=['Predicted'])
+for i in range(25):
+    m1 = (MainDeckCards['hdb'] == i)
+    m2 = MainDeckCards[m1].mean()
+    #print(m2['Jace, Wielder of Mysteries'],i)
+    print(m2.nlargest(25),i)
 
-pd.DataFrame({'Variable':X_test.columns,
-'Importance':gbr.feature_importances_}).sort_values('Importance', ascending=False)
+MergeMainDeckCards=MainDeckCards.merge(df,right_index=True,left_on='DeckID')
 
-allpd = {}
+MetaList=MergeMainDeckCards.groupby('hdb')['wins','losses'].sum()
 
-for i in range(len(feature_list)-1):
-    key, values = partial_dependence(gbr, target_variables=i, X=X_test) 
-    allpd.update(dict(zip([feature_list[i]], key.tolist())))
-
-df=pd.DataFrame(dict([ (k,pd.Series(v)) for k,v in allpd.items() ]))
-
+MetaList['WL']=(MetaList['wins'])/(MetaList['wins']+MetaList['losses'])
+MetaList['ZScore']=(MetaList['wins']-MetaList['losses'])/np.sqrt(MetaList['wins']+MetaList['losses'])
+MetaList.sort_values('ZScore',ascending=False)
