@@ -10,6 +10,7 @@ from sklearn.model_selection import train_test_split
 from MTGAToolFunctions import loaddatabase
 from MTGAToolFunctions import RankTranslate
 from MTGAToolFunctions import GetEvents
+<<<<<<< HEAD
 import hdbscan
 
 
@@ -78,6 +79,11 @@ for ii in range(500):
 
 #have to start by converting to pandas df
 inputdf = pd.DataFrame.from_dict(decks,orient='index')
+=======
+import grid_deckdata
+import os
+import datetime
+>>>>>>> aae664f2fcd0d0559e34ab27c8a2f6b507d82a3a
 
 #save pandas df
 #inputdf.to_pickle('WARLadder.pkl')
@@ -86,9 +92,31 @@ inputdf = pd.DataFrame.from_dict(decks,orient='index')
 #Load pandas df
 #inputdf=pd.read_pickle('GRNdraft.pkl')
 
+carddata=loaddatabase()
+
+print("Loading existing deck data ...")
+if os.path.exists('deckdata.jsonlist'):
+    with open('deckdata.jsonlist', 'r') as fh:
+        decks = [json.loads(line) for line in fh.readlines()]
+        deckdict = {row['result']['_id']: row for row in decks}
+
+deckgrid = grid_deckdata.grid_deckdata(deckdict)
+df = deckgrid.loc[deckgrid['event']=='Traditional_Cons_Event']
+df = df.loc[~df['playerRank'].isin(['Silver','Bronze'])]
+
+print(datetime.datetime.fromtimestamp(int(df['date'].min())).strftime('%Y-%m-%d'))
+
 #########
 #Color winrates
-df = json_normalize(inputdf['result'])
+#########
+average=df['wins'].sum()/df['games'].sum()
+colorwinrates = df.groupby('colors')[['wins','losses','games']].sum().reset_index()
+colorwinrates['WinLoss'] = colorwinrates['wins']/colorwinrates['games']
+
+colorwinrates['ZScore'] = 2 * np.sqrt(colorwinrates['games']) * (colorwinrates['WinLoss'] - average) 
+
+colorwinrates.sort_values('ZScore', ascending=False)
+colorwinrates.sort_values('ZScore', ascending=False).to_csv('WARcolorwinrates.tab',sep='\t')
 
 df.rename(columns={'ModuleInstanceData.WinLossGate.CurrentWins':'Wins',
                           'ModuleInstanceData.WinLossGate.CurrentLosses':'Losses'}, 
@@ -103,7 +131,7 @@ golddf = df[df['playerRank']!='Silver']
 #########
 #MainDecks
 #########
-maindeck=df['CourseDeck.mainDeck'].apply(json_normalize)
+maindeck=df['JSONmaindeck'].apply(json_normalize)
 maindeck=pd.concat(maindeck.to_dict(),axis=0)
 maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
@@ -117,22 +145,22 @@ feature_list=list(MainDeckCards)
 
 import hdbscan
 
-hdb = hdbscan.HDBSCAN(min_cluster_size=20)
+hdb = hdbscan.HDBSCAN(min_cluster_size=int(np.floor(len(df)/50)))
 hdb.fit(MainDeckCards[feature_list])
 
 MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
 MainDeckCards['hdb'].value_counts()
 
-for i in range(30):
-    m1 = (MainDeckCards['hdb'] == i)
-    m2 = MainDeckCards[m1].mean()
-    print(m2.nlargest(30),i)
-
 MergeMainDeckCards=MainDeckCards.merge(df,right_index=True,left_on='DeckID')
 
-MetaList=MergeMainDeckCards.groupby('hdb')['Wins','Losses'].sum()
+MetaList=MergeMainDeckCards.groupby('hdb')['wins','losses'].sum()
 
-MetaList['WinLoss']=(MetaList['Wins'])/(MetaList['Wins']+MetaList['Losses'])
-MetaList['ZScore'] = 2 * np.sqrt(MetaList['Wins'] + MetaList['Losses']) * (MetaList['WinLoss'] - MetaList['WinLoss'].mean())
+MetaList['WL']=(MetaList['wins'])/(MetaList['wins']+MetaList['losses'])
+MetaList['ZScore']=(MetaList['wins']-MetaList['losses'])/np.sqrt(MetaList['wins']+MetaList['losses'])
 MetaList.sort_values('ZScore',ascending=False)
 
+for i in range(25):
+    m1 = (MainDeckCards['hdb'] == i)
+    m2 = MainDeckCards[m1].mean()
+    #print(m2['Jace, Wielder of Mysteries'],i)
+    print(m2.nlargest(25),i)
