@@ -55,7 +55,6 @@ print("Creating to-do list ...")
 skiplist = set(deckids + bad_decks)
 todo = [entry['_id'] for entry in data if entry['_id'] not in skiplist]
 
-
 print()
 print("Beginning query series ...")
 

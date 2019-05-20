@@ -96,6 +96,7 @@ for ii in iterlist:
         print(f"Added {n_unique} new ids of {len(unique_ids)} retrieved, total {len(matchdata)}.  Last date {data_this['result'][-1]['date']}")
     else:
         print(f"No matches for {query}")
+        break
 
     with open('matchdata.json', 'w') as fh:
         json.dump(matchdata, fh)
