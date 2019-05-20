@@ -60,7 +60,7 @@ colorwinrates.sort_values('ZScore', ascending=False).to_csv('WARcolorwinrates.ta
 
 
 ##############
-maindeck=golddf['CourseDeck.mainDeck'].apply(json_normalize)
+maindeck=df['JSONmaindeck'].apply(json_normalize)
 maindeck=pd.concat(maindeck.to_dict(),axis=0)
 maindeck.index = maindeck.index.set_names(['DeckID', 'Seq'])
 maindeck.reset_index(inplace=True)  
@@ -75,16 +75,14 @@ feature_list=list(MainDeckCards)
 #############
 ##carddata
 #############
-cardmaindeck=maindeck.merge(golddf,left_on='DeckID',right_index=True)
+cardmaindeck=maindeck.merge(df,left_on='DeckID',right_index=True)
 
-cardwinrates = cardmaindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['Wins','Losses']].sum().reset_index()
-cardwinrates['W/L'] = cardwinrates['Wins']/(cardwinrates['Losses']+cardwinrates['Wins'])
+cardwinrates = cardmaindeck.loc[maindeck['quantity'] > 0].groupby(['name','rarity'])[['wins','losses']].sum().reset_index()
+cardwinrates['W/L'] = cardwinrates['wins']/(cardwinrates['losses']+cardwinrates['wins'])
 
-cardwinrates['Games'] = cardwinrates['Wins']+cardwinrates['Losses']
-
-cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='uncommon',cardwinrates['Games'] * (8/3.0), cardwinrates['Games'])
-cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='rare',cardwinrates['Games'] * 8, cardwinrates['AdjustedGames'])
-cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwinrates['Games'] * 16, cardwinrates['AdjustedGames'])
+cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='uncommon',cardwinrates['games'] * (8/3.0), cardwinrates['games'])
+cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='rare',cardwinrates['games'] * 8, cardwinrates['AdjustedGames'])
+cardwinrates['AdjustedGames'] = np.where(cardwinrates['rarity']=='mythic',cardwinrates['games'] * 16, cardwinrates['AdjustedGames'])
 
 cardwinrates['WARC'] = (cardwinrates['W/L'] - .4) * cardwinrates['AdjustedGames']
 

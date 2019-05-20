@@ -12,6 +12,7 @@ from MTGAToolFunctions import RankTranslate
 from MTGAToolFunctions import GetEvents
 import grid_deckdata
 import os
+import datetime
 
 #save pandas df
 #inputdf.to_pickle('WARLadder.pkl')
@@ -29,10 +30,10 @@ if os.path.exists('deckdata.jsonlist'):
         deckdict = {row['result']['_id']: row for row in decks}
 
 deckgrid = grid_deckdata.grid_deckdata(deckdict)
-df = deckgrid.loc[deckgrid['event']=='QuickDraft_WAR_20190510']
+df = deckgrid.loc[deckgrid['event']=='Traditional_Cons_Event']
 df = df.loc[~df['playerRank'].isin(['Silver','Bronze'])]
 
-print(datetime.fromtimestamp(int(df['date'].min())).strftime('%Y-%m-%d'))
+print(datetime.datetime.fromtimestamp(int(df['date'].min())).strftime('%Y-%m-%d'))
 
 #########
 #Color winrates
@@ -61,24 +62,13 @@ MainDeckCards=maindeck.pivot_table('quantity', ['DeckID'], 'name').fillna(0)
 MainDeckCards = MainDeckCards.astype(int)
 feature_list=list(MainDeckCards)
 
-modeldf = df.merge(MainDeckCards,left_index=True,right_index=True).reset_index(drop=True)
-#X = StandardScaler().fit_transform(modeldf[feature_list])
-modeldf = modeldf.loc[(modeldf['GoodDeck']==1) | (modeldf['GoodDeck']==0)]
-modeldf['GoodDeck'] = modeldf['GoodDeck'].apply(int)
-
 import hdbscan
 
-hdb = hdbscan.HDBSCAN(min_cluster_size=25)
+hdb = hdbscan.HDBSCAN(min_cluster_size=int(np.floor(len(df)/50)))
 hdb.fit(MainDeckCards[feature_list])
 
 MainDeckCards['hdb'] = pd.Series(hdb.labels_+1, index=MainDeckCards.index)
 MainDeckCards['hdb'].value_counts()
-
-for i in range(25):
-    m1 = (MainDeckCards['hdb'] == i)
-    m2 = MainDeckCards[m1].mean()
-    #print(m2['Jace, Wielder of Mysteries'],i)
-    print(m2.nlargest(25),i)
 
 MergeMainDeckCards=MainDeckCards.merge(df,right_index=True,left_on='DeckID')
 
@@ -87,3 +77,9 @@ MetaList=MergeMainDeckCards.groupby('hdb')['wins','losses'].sum()
 MetaList['WL']=(MetaList['wins'])/(MetaList['wins']+MetaList['losses'])
 MetaList['ZScore']=(MetaList['wins']-MetaList['losses'])/np.sqrt(MetaList['wins']+MetaList['losses'])
 MetaList.sort_values('ZScore',ascending=False)
+
+for i in range(25):
+    m1 = (MainDeckCards['hdb'] == i)
+    m2 = MainDeckCards[m1].mean()
+    #print(m2['Jace, Wielder of Mysteries'],i)
+    print(m2.nlargest(25),i)
