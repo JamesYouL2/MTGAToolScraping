@@ -58,7 +58,8 @@ todo = [entry['_id'] for entry in data if entry['_id'] not in skiplist]
 print()
 print("Beginning query series ...")
 
-pb = progressbar.ProgressBar(max_value=len(todo))
+pb = progressbar.ProgressBar(len(todo))
+pb.start()
 i=0
 with open('deckdata.jsonlist', 'a') as fh:
 
